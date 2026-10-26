@@ -141,6 +141,10 @@ func (r *Resolver) ResolveMeta(ctx context.Context, ref Ref) (*Meta, error) {
 		m.addCandidate(ref.DirectPDF, "direct-url", 5, nil)
 	}
 
+	if m.DOI == "" && ref.PII != "" {
+		_ = r.resolveByPII(ctx, m, ref.PII)
+	}
+
 	if m.DOI == "" && m.ArXiv == "" && m.PMID == "" && m.PMCID == "" && m.OpenReviewForum == "" && ref.Query != "" {
 		r.resolveQuery(ctx, m, ref.Query)
 	}
@@ -1186,4 +1190,30 @@ func (m *Meta) BibTeX() string {
 	}
 	b.WriteString("}\n")
 	return b.String()
+}
+
+func (r *Resolver) resolveByPII(ctx context.Context, m *Meta, pii string) error {
+	u := "https://api.crossref.org/works?filter=alternative-id:" + url.QueryEscape(pii) + "&rows=1"
+	body, err := r.getBytes(ctx, u, nil)
+	if err != nil {
+		return err
+	}
+	var resp struct {
+		Message struct {
+			Items []struct {
+				DOI   string   `json:"DOI"`
+				Title []string `json:"title"`
+			} `json:"items"`
+		} `json:"message"`
+	}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return err
+	}
+	if len(resp.Message.Items) > 0 && resp.Message.Items[0].DOI != "" {
+		m.DOI = strings.ToLower(strings.TrimSpace(resp.Message.Items[0].DOI))
+		if m.Title == "" && len(resp.Message.Items[0].Title) > 0 {
+			m.Title = strings.TrimSpace(resp.Message.Items[0].Title[0])
+		}
+	}
+	return nil
 }

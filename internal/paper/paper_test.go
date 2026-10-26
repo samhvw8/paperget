@@ -31,6 +31,14 @@ func TestParseIdentifiers(t *testing.T) {
 			},
 		},
 		{
+			in: "https://www.cell.com/trends/cognitive-sciences/abstract/S1364-6613(16)30098-5",
+			checkFn: func(t *testing.T, r Ref) {
+				if r.PII != "S1364661316300985" {
+					t.Fatalf("expected PII S1364661316300985, got %+v", r)
+				}
+			},
+		},
+		{
 			in: "https://annas-archive.gd/scidb/10.1038/nature14539",
 			checkFn: func(t *testing.T, r Ref) {
 				if r.DOI != "10.1038/nature14539" {

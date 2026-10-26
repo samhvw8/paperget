@@ -22,23 +22,25 @@ type Ref struct {
 	ZenodoID        string `json:"zenodo_id,omitempty"`
 	HALID           string `json:"hal_id,omitempty"`
 	AnnaMD5         string `json:"anna_md5,omitempty"`
+	PII             string `json:"pii,omitempty"`
 	DirectPDF       string `json:"direct_pdf,omitempty"`
 	Query           string `json:"query,omitempty"`
 }
 
 var (
-	reDOI       = regexp.MustCompile(`(?i)^(10\.\d{4,9}/[^\s"<>]+)$`)
-	reDOIFind   = regexp.MustCompile(`(?i)(10\.\d{4,9}/[^\s"<>?#]+)`)
-	reArXivNew  = regexp.MustCompile(`^(\d{4}\.\d{4,5})(v\d+)?$`)
-	reArXivOld  = regexp.MustCompile(`^([a-z][a-z.-]*(?:\.[A-Z]{2})?/\d{7})(v\d+)?$`)
-	reArXivDOI  = regexp.MustCompile(`^(?i)10\.48550/arxiv\.(.+)$`)
-	rePMCID     = regexp.MustCompile(`^(?i)pmc(\d+)$`)
-	rePMIDPref  = regexp.MustCompile(`^(?i)pmid:\s*(\d+)$`)
-	reDigits    = regexp.MustCompile(`^\d{5,10}$`)
-	reMD5       = regexp.MustCompile(`^(?i)(?:md5:)?([a-f0-9]{32})$`)
-	reRxivPath  = regexp.MustCompile(`^/content/(?:early/\d{4}/\d{2}/\d{2}/)?(10\.(?:1101|64898)/[\d.]+)(v\d+)?`)
-	reZenodoDOI = regexp.MustCompile(`^(?i)10\.5281/zenodo\.(\d+)$`)
-	reORRef     = regexp.MustCompile(`^([A-Za-z0-9_-]{6,20})@([A-Za-z0-9._/-]+)$`)
+	reDOI         = regexp.MustCompile(`(?i)^(10\.\d{4,9}/[^\s"<>]+)$`)
+	reDOIFind     = regexp.MustCompile(`(?i)(10\.\d{4,9}/[^\s"<>?#]+)`)
+	reArXivNew    = regexp.MustCompile(`^(\d{4}\.\d{4,5})(v\d+)?$`)
+	reArXivOld    = regexp.MustCompile(`^([a-z][a-z.-]*(?:\.[A-Z]{2})?/\d{7})(v\d+)?$`)
+	reArXivDOI    = regexp.MustCompile(`^(?i)10\.48550/arxiv\.(.+)$`)
+	rePMCID       = regexp.MustCompile(`^(?i)pmc(\d+)$`)
+	rePMIDPref    = regexp.MustCompile(`^(?i)pmid:\s*(\d+)$`)
+	reDigits      = regexp.MustCompile(`^\d{5,10}$`)
+	reMD5         = regexp.MustCompile(`^(?i)(?:md5:)?([a-f0-9]{32})$`)
+	reRxivPath    = regexp.MustCompile(`^/content/(?:early/\d{4}/\d{2}/\d{2}/)?(10\.(?:1101|64898)/[\d.]+)(v\d+)?`)
+	reZenodoDOI   = regexp.MustCompile(`^(?i)10\.5281/zenodo\.(\d+)$`)
+	reORRef       = regexp.MustCompile(`^([A-Za-z0-9_-]{6,20})@([A-Za-z0-9._/-]+)$`)
+	reElsevierPII = regexp.MustCompile(`(?i)(?:^|/|\b)(?:PII)?(S\d{4}-?\d{3}[\dX]\(?\d{2}\)?\d{5}-?[\dX])(?:$|/|\b)`)
 )
 
 // Parse turns a raw CLI argument (identifier, URL, or title query) into a Ref.
@@ -312,6 +314,10 @@ func parseURL(ref Ref, u *url.URL) (Ref, bool) {
 	}
 	if m := reDOIFind.FindStringSubmatch(path); m != nil {
 		return applyDOI(ref, m[1]), true
+	}
+	if m := reElsevierPII.FindStringSubmatch(path); m != nil {
+		ref.PII = strings.NewReplacer("-", "", "(", "", ")", "").Replace(strings.ToUpper(m[1]))
+		return ref, true
 	}
 
 	return ref, false
