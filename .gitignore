@@ -1,0 +1,6 @@
+bin/
+dist/
+*.pdf
+*.tar.gz
+.env*
+.DS_Store

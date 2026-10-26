@@ -1,0 +1,30 @@
+[tools]
+go = "1.27.3"
+
+[env]
+CGO_ENABLED = "0"
+
+[tasks.build]
+description = "Build paperget binary into bin/paperget"
+run = "go build -o bin/paperget ./cmd/paperget"
+
+[tasks.install]
+description = "Install paperget into ~/.local/bin and गो/bin"
+run = "mkdir -p ~/.local/bin && go build -o ~/.local/bin/paperget ./cmd/paperget && go install ./cmd/paperget"
+
+[tasks.test]
+description = "Run unit tests (offline deterministic)"
+run = "CGO_ENABLED=1 go test -race ./..."
+
+[tasks.vet]
+run = "go vet ./... && GOOS=linux go vet ./..."
+
+[tasks.fmt-check]
+run = "test -z \"$(gofmt -l .)\" || { gofmt -l .; exit 1; }"
+
+[tasks.check]
+description = "gofmt, vet, race tests, and OKF validation"
+depends = ["fmt-check", "vet", "test", "docs:validate"]
+
+[tasks."docs:validate"]
+run = "uv run ~/.omp/agent/skills/validate/scripts/okf_validate.py .okf --strict"
