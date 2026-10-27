@@ -14,4 +14,4 @@
 - Added parallel worker pool (`-j N`) for batch downloads in `get`, `search -d`, and `snowball -d`.
 - Excluded `10.48550/` (arXiv DOIs) from Sci-Hub queries to prevent invalid HTML responses.
 - Added `.okf/architecture/search-and-snowball.md`.
-- `ci.yml`, `release.yml`, and `.goreleaser.yaml`: Added GitHub Actions CI (`gofmt`, multi-OS `go vet`, `go test -race`, and 6-target cross-compilation artifact builds) plus tag-triggered GoReleaser releases.
+- `release.yml` and `.goreleaser.yaml`: Added GitHub Actions GoReleaser workflow to build and publish multi-platform release binaries to GitHub Releases on `v*` tags.
