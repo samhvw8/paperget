@@ -14,6 +14,8 @@ import (
 	"github.com/samhvw8/paperhunt/internal/paper"
 )
 
+var version = "dev"
+
 func main() {
 	if len(os.Args) < 2 {
 		usage()
@@ -25,6 +27,9 @@ func main() {
 	switch sub {
 	case "-h", "--help", "help":
 		usage()
+		return
+	case "-v", "--version", "version":
+		fmt.Printf("paperhunt %s\n", version)
 		return
 	case "search", "s", "find":
 		if err := runSearch(args); err != nil {

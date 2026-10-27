@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Format, Vet, Test & Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Check formatting (gofmt)
+        run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+
+      - name: Vet
+        run: |
+          go vet ./...
+          GOOS=darwin go vet ./...
+          GOOS=windows go vet ./...
+
+      - name: Test (race detector)
+        run: CGO_ENABLED=1 go test -race -v ./...
+
+      - name: Build cross-platform binaries
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          mkdir -p dist
+          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64; do
+            GOOS="${target%/*}"
+            GOARCH="${target#*/}"
+            ext=""
+            if [ "$GOOS" = "windows" ]; then ext=".exe"; fi
+            out="dist/paperhunt-${GOOS}-${GOARCH}${ext}"
+            echo "Building ${out}..."
+            GOOS="$GOOS" GOARCH="$GOARCH" go build -trimpath -ldflags="-s -w -X main.version=${GITHUB_SHA::7}" -o "$out" ./cmd/paperhunt
+          done
+          ls -lh dist/
+
+      - name: Smoke-test Linux binary
+        run: |
+          ./dist/paperhunt-linux-amd64 --version
+          ./dist/paperhunt-linux-amd64 --help
+
+      - name: Upload binaries
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: paperhunt-${{ github.sha }}
+          path: dist/paperhunt-*
+          retention-days: 14
