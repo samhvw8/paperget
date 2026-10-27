@@ -59,10 +59,10 @@ func (r *Resolver) downloadFromShadow(ctx context.Context, m *Meta, opts Downloa
 	var errs []string
 
 	dois := []string{}
-	if m.DOI != "" {
+	if m.DOI != "" && !strings.HasPrefix(strings.ToLower(m.DOI), "10.48550/") {
 		dois = append(dois, m.DOI)
 	}
-	if m.PublishedDOI != "" && m.PublishedDOI != m.DOI {
+	if m.PublishedDOI != "" && m.PublishedDOI != m.DOI && !strings.HasPrefix(strings.ToLower(m.PublishedDOI), "10.48550/") {
 		dois = append(dois, m.PublishedDOI)
 	}
 

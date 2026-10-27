@@ -5,12 +5,12 @@ go = "1.27.3"
 CGO_ENABLED = "0"
 
 [tasks.build]
-description = "Build paperget binary into bin/paperget"
-run = "go build -o bin/paperget ./cmd/paperget"
+description = "Build paperhunt binary into bin/paperhunt"
+run = "go build -o bin/paperhunt ./cmd/paperhunt"
 
 [tasks.install]
-description = "Install paperget into ~/.local/bin and गो/bin"
-run = "mkdir -p ~/.local/bin && go build -o ~/.local/bin/paperget ./cmd/paperget && go install ./cmd/paperget"
+description = "Install paperhunt into ~/.local/bin and गो/bin"
+run = "mkdir -p ~/.local/bin && go build -o ~/.local/bin/paperhunt ./cmd/paperhunt && go install ./cmd/paperhunt"
 
 [tasks.test]
 description = "Run unit tests (offline deterministic)"

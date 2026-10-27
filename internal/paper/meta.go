@@ -42,7 +42,10 @@ type Meta struct {
 	PMCID             string           `json:"pmcid,omitempty"`
 	OpenReviewForum   string           `json:"openreview_forum,omitempty"`
 	OpenReviewGroup   string           `json:"openreview_group,omitempty"`
+	OpenAlexID        string           `json:"openalex_id,omitempty"`
+	ReferencedWorks   []string         `json:"referenced_works,omitempty"`
 	PublishedDOI      string           `json:"published_doi,omitempty"`
+	IsOA              bool             `json:"is_oa"`
 	Retracted         bool             `json:"retracted"`
 	RetractionNotices []string         `json:"retraction_notices,omitempty"`
 	CitedBy           int              `json:"cited_by,omitempty"`
@@ -76,7 +79,7 @@ type Resolver struct {
 func NewResolver() *Resolver {
 	email := os.Getenv("UNPAYWALL_EMAIL")
 	if email == "" {
-		email = "paperget@openresearch.org"
+		email = "paperhunt@openresearch.org"
 	}
 	return &Resolver{
 		Client: &http.Client{
@@ -209,6 +212,10 @@ func (r *Resolver) ResolveMeta(ctx context.Context, ref Ref) (*Meta, error) {
 	}
 
 	wg.Wait()
+
+	if len(m.PDFCandidates) == 0 && m.ArXiv == "" && m.PMCID == "" && m.Title != "" {
+		r.enrichPreprintByTitle(ctx, &mu, m)
+	}
 
 	if m.PMCID != "" {
 		r.enrichFromPMCS3(ctx, &mu, m, m.PMCID)
@@ -355,18 +362,23 @@ func normTitle(s string) string {
 }
 
 type oaWork struct {
-	ID              string `json:"id"`
-	DOI             string `json:"doi"`
-	Title           string `json:"title"`
-	PublicationYear int    `json:"publication_year"`
-	Type            string `json:"type"`
-	IsRetracted     bool   `json:"is_retracted"`
-	CitedByCount    int    `json:"cited_by_count"`
+	ID              string   `json:"id"`
+	DOI             string   `json:"doi"`
+	Title           string   `json:"title"`
+	PublicationYear int      `json:"publication_year"`
+	Type            string   `json:"type"`
+	IsRetracted     bool     `json:"is_retracted"`
+	CitedByCount    int      `json:"cited_by_count"`
+	ReferencedWorks []string `json:"referenced_works"`
 	IDs             struct {
 		DOI   string `json:"doi"`
 		PMID  string `json:"pmid"`
 		PMCID string `json:"pmcid"`
 	} `json:"ids"`
+	OpenAccess *struct {
+		IsOA  bool   `json:"is_oa"`
+		OAURL string `json:"oa_url"`
+	} `json:"open_access"`
 	PrimaryLocation *oaLocation  `json:"primary_location"`
 	BestOALocation  *oaLocation  `json:"best_oa_location"`
 	Locations       []oaLocation `json:"locations"`
@@ -442,6 +454,12 @@ func (r *Resolver) applyOpenAlexWork(mu *sync.Mutex, m *Meta, w *oaWork) {
 	mu.Lock()
 	defer mu.Unlock()
 
+	if m.OpenAlexID == "" && w.ID != "" {
+		m.OpenAlexID = strings.TrimPrefix(w.ID, "https://openalex.org/")
+	}
+	if len(m.ReferencedWorks) == 0 && len(w.ReferencedWorks) > 0 {
+		m.ReferencedWorks = w.ReferencedWorks
+	}
 	if m.Title == "" && w.Title != "" {
 		m.Title = strings.Join(strings.Fields(w.Title), " ")
 	}
@@ -486,7 +504,18 @@ func (r *Resolver) applyOpenAlexWork(mu *sync.Mutex, m *Meta, w *oaWork) {
 			m.PMCID = "PMC" + pm[1]
 		}
 	}
+	if w.OpenAccess != nil {
+		if w.OpenAccess.IsOA {
+			m.IsOA = true
+		}
+		if w.OpenAccess.OAURL != "" {
+			m.addCandidate(w.OpenAccess.OAURL, "openalex-oa-url", 22, nil)
+		}
+	}
 	if w.BestOALocation != nil {
+		if w.BestOALocation.IsOA {
+			m.IsOA = true
+		}
 		if m.License == "" && w.BestOALocation.License != "" {
 			m.License = w.BestOALocation.License
 		}
@@ -1216,4 +1245,57 @@ func (r *Resolver) resolveByPII(ctx context.Context, m *Meta, pii string) error 
 		}
 	}
 	return nil
+}
+
+func (r *Resolver) enrichPreprintByTitle(ctx context.Context, mu *sync.Mutex, m *Meta) {
+	wantKey := normalizeTitleKey(m.Title)
+	if len(wantKey) < 16 {
+		return
+	}
+	subCtx, cancel := context.WithTimeout(ctx, 6*time.Second)
+	defer cancel()
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		items, err := r.searchArXiv(subCtx, SearchOptions{Query: `ti:"` + m.Title + `"`}, 5)
+		if err != nil {
+			return
+		}
+		for _, it := range items {
+			if normalizeTitleKey(it.Title) == wantKey && it.ArXiv != "" {
+				mu.Lock()
+				if m.ArXiv == "" {
+					m.ArXiv = it.ArXiv
+				}
+				m.addCandidate("https://arxiv.org/pdf/"+ArXivBase(it.ArXiv)+".pdf", "arxiv-preprint-match", 42, nil)
+				mu.Unlock()
+				return
+			}
+		}
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		items, err := r.searchOpenAlex(subCtx, SearchOptions{Query: m.Title, OAOnly: true}, 5)
+		if err != nil {
+			return
+		}
+		for _, it := range items {
+			if normalizeTitleKey(it.Title) == wantKey {
+				mu.Lock()
+				if it.PDFURL != "" {
+					m.addCandidate(it.PDFURL, "openalex-preprint-match", 44, nil)
+				}
+				if m.PMCID == "" && it.PMCID != "" {
+					m.PMCID = it.PMCID
+				}
+				mu.Unlock()
+				return
+			}
+		}
+	}()
+	wg.Wait()
 }

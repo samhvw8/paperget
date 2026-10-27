@@ -255,3 +255,141 @@ func TestArXivTeXExtractionAndPathTraversalDefense(t *testing.T) {
 		t.Fatalf("expected GitHub repo extracted from main.tex, got %v", meta.CodeRepos)
 	}
 }
+
+func TestDeduplicateAndRankSearch(t *testing.T) {
+	hits := []engineHit{
+		{
+			engine: "openalex",
+			rank:   1,
+			item: SearchResult{
+				Title:   "Attention Is All You Need",
+				DOI:     "10.48550/arxiv.1706.03762",
+				ArXiv:   "1706.03762",
+				Year:    2017,
+				CitedBy: 120000,
+			},
+		},
+		{
+			engine: "arxiv",
+			rank:   1,
+			item: SearchResult{
+				Title:  "Attention Is All You Need!",
+				ArXiv:  "1706.03762v7",
+				Year:   2017,
+				IsOA:   true,
+				PDFURL: "https://arxiv.org/pdf/1706.03762v7.pdf",
+			},
+		},
+		{
+			engine: "crossref",
+			rank:   2,
+			item: SearchResult{
+				Title:   "Cognitive Load Theory and Instructional Design",
+				DOI:     "10.1007/s10648-019-09465-5",
+				Year:    2019,
+				CitedBy: 2300,
+			},
+		},
+	}
+
+	merged := mergeAndRankSearchResults(hits, SearchOptions{Sort: "rrf", Limit: 10})
+	if len(merged) != 2 {
+		t.Fatalf("expected 2 deduplicated works, got %d", len(merged))
+	}
+	if merged[0].ArXiv != "1706.03762" && merged[0].ArXiv != "1706.03762v7" {
+		t.Fatalf("expected top work to be Attention Is All You Need, got %+v", merged[0])
+	}
+	if len(merged[0].Sources) != 2 {
+		t.Fatalf("expected 2 merged sources on top work, got %v", merged[0].Sources)
+	}
+	if !merged[0].IsOA || merged[0].PDFURL == "" {
+		t.Fatalf("expected OA PDFURL merged from arxiv, got IsOA=%v PDFURL=%q", merged[0].IsOA, merged[0].PDFURL)
+	}
+	if merged[0].CitationVelocity <= 0 {
+		t.Fatalf("expected positive CitationVelocity, got %f", merged[0].CitationVelocity)
+	}
+}
+
+func TestFederatedSearchAndSnowballMock(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasPrefix(r.URL.Path, "/oa/works/"):
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{
+				"id": "https://openalex.org/W100",
+				"doi": "https://doi.org/10.1038/s41562-024-02077-2",
+				"title": "How human-AI feedback loops alter human perceptual, emotional and social judgements",
+				"publication_year": 2024,
+				"publication_date": "2024-12-18",
+				"cited_by_count": 283,
+				"referenced_works": ["https://openalex.org/W200", "https://openalex.org/W201"]
+			}`))
+		case strings.HasPrefix(r.URL.Path, "/oa/works"):
+			q := r.URL.Query().Get("filter")
+			w.Header().Set("Content-Type", "application/json")
+			if strings.Contains(q, "cites:W100") {
+				_, _ = w.Write([]byte(`{"results":[{
+					"id": "https://openalex.org/W300",
+					"doi": "https://doi.org/10.1038/s41586-026-09951-7",
+					"title": "Discovery Learning predicts battery cycle life from minimal experiments",
+					"publication_year": 2026,
+					"cited_by_count": 40,
+					"open_access": {"is_oa": true, "oa_url": "https://example.org/w300.pdf"}
+				}]}`))
+				return
+			}
+			if strings.Contains(q, "openalex:W200|W201") {
+				_, _ = w.Write([]byte(`{"results":[{
+					"id": "https://openalex.org/W200",
+					"doi": "https://doi.org/10.1073/pnas.1008662107",
+					"title": "Speaker-listener neural coupling underlies successful communication",
+					"publication_year": 2010,
+					"cited_by_count": 965,
+					"open_access": {"is_oa": true, "oa_url": "https://example.org/w200.pdf"}
+				}]}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"results":[{
+				"id": "https://openalex.org/W100",
+				"doi": "https://doi.org/10.1038/s41562-024-02077-2",
+				"title": "How human-AI feedback loops alter human perceptual, emotional and social judgements",
+				"publication_year": 2024,
+				"cited_by_count": 283,
+				"open_access": {"is_oa": true, "oa_url": "https://example.org/w100.pdf"}
+			}]}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	res := NewResolver()
+	res.OpenAlexBase = srv.URL + "/oa"
+	res.EPMCBase = srv.URL + "/epmc"
+	res.UnpaywallBase = srv.URL + "/upw"
+	res.ArXivAPIBase = srv.URL + "/arxiv"
+
+	ctx := context.Background()
+	hits, err := res.Search(ctx, SearchOptions{
+		Query:   "human-AI feedback loops",
+		Sources: []string{"openalex"},
+		Limit:   5,
+	})
+	if err != nil {
+		t.Fatalf("Search error: %v", err)
+	}
+	if len(hits) != 1 || hits[0].DOI != "10.1038/s41562-024-02077-2" {
+		t.Fatalf("unexpected search hits: %+v", hits)
+	}
+
+	sb, err := res.Snowball(ctx, "10.1038/s41562-024-02077-2", SnowballOptions{
+		Direction: "both",
+		Limit:     10,
+	})
+	if err != nil {
+		t.Fatalf("Snowball error: %v", err)
+	}
+	if sb.OpenAlexID != "W100" || len(sb.Items) != 2 {
+		t.Fatalf("expected 2 snowball items for W100, got %+v", sb)
+	}
+}
