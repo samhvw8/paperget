@@ -9,8 +9,8 @@ description = "Build paperhunt binary into bin/paperhunt"
 run = "go build -o bin/paperhunt ./cmd/paperhunt"
 
 [tasks.install]
-description = "Install paperhunt into ~/.local/bin and गो/bin"
-run = "mkdir -p ~/.local/bin && go build -o ~/.local/bin/paperhunt ./cmd/paperhunt && go install ./cmd/paperhunt"
+description = "Install or upgrade global paperhunt release binary via mise"
+run = "mise up github:samhvw8/paperhunt"
 
 [tasks.test]
 description = "Run unit tests (offline deterministic)"

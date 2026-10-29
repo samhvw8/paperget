@@ -14,7 +14,7 @@ Standalone Go CLI tool for resolving academic paper identifiers, downloading ver
 ## Commands
 
 - `mise run build` — build `bin/paperhunt`
-- `mise run install` — install `paperhunt` to `~/.local/bin/paperhunt` and Go bin
+- `mise run install` — install or upgrade global `paperhunt` release binary via `mise up github:samhvw8/paperhunt`
 - `mise run test` — run offline race tests
 - `mise run check` — format check, vet, race tests, and strict OKF validation
 - `mise run docs:validate` — validate `.okf/` bundle
